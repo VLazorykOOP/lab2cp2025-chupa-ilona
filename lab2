@@ -1,0 +1,110 @@
+#include <iostream>
+#include <thread>
+#include <vector>
+#include <mutex>
+#include <chrono>
+#include <random>
+
+using namespace std;
+
+mutex cout_mutex; 
+
+class Vehicle {
+protected:
+    double position;
+    double velocity;
+    char type; // 'C' для авто, 'M' для мотоцикла
+    int id;
+
+public:
+    Vehicle(int id, char type, double velocity) : id(id), type(type), velocity(velocity), position(0.0) {}
+
+    virtual void move(double simulation_size) = 0;
+
+    void print_position() const {
+        lock_guard<mutex> lock(cout_mutex);
+        if (type == 'C')
+            cout << "Car " << id << ": X = " << position << endl;
+        else
+            cout << "Motorcycle " << id << ": Y = " << position << endl;
+    }
+
+    double get_position() const { return position; }
+    void set_position(double pos) { position = pos; }
+};
+
+class Car : public Vehicle {
+public:
+    Car(int id, double velocity) : Vehicle(id, 'C', velocity) {}
+
+    void move(double simulation_size) override {
+        while (position < simulation_size) {
+            {
+                lock_guard<mutex> lock(cout_mutex);
+                position += velocity * 0.1; // Оновлення позиції
+                if (position > simulation_size) position = simulation_size;
+            }
+            print_position();
+            this_thread::sleep_for(chrono::milliseconds(100));
+        }
+    }
+};
+
+class Motorcycle : public Vehicle {
+public:
+    Motorcycle(int id, double velocity) : Vehicle(id, 'M', velocity) {}
+
+    void move(double simulation_size) override {
+        while (position < simulation_size) {
+            {
+                lock_guard<mutex> lock(cout_mutex);
+                position += velocity * 0.1; // Оновлення позиції
+                if (position > simulation_size) position = simulation_size;
+            }
+            print_position();
+            this_thread::sleep_for(chrono::milliseconds(100));
+        }
+    }
+};
+
+int main() {
+    const double SIMULATION_SIZE = 100.0; // Розмір області симуляції
+    const int NUM_CARS = 2;
+    const int NUM_MOTORCYCLES = 2;
+
+    vector<thread> threads;
+    vector<unique_ptr<Vehicle>> vehicles;
+
+    random_device rd;
+    mt19937 gen(rd());
+    uniform_real_distribution<> dis(5.0, 15.0); // Випадкова швидкість від 5 до 15
+
+    // Створення автомобілів
+    for (int i = 0; i < NUM_CARS; ++i) {
+        double velocity = dis(gen);
+        vehicles.push_back(make_unique<Car>(i + 1, velocity));
+        cout << "Created Car " << i + 1 << " with velocity " << velocity << endl;
+    }
+
+    // Створення мотоциклів
+    for (int i = 0; i < NUM_MOTORCYCLES; ++i) {
+        double velocity = dis(gen);
+        vehicles.push_back(make_unique<Motorcycle>(i + 1, velocity));
+        cout << "Created Motorcycle " << i + 1 << " with velocity " << velocity << endl;
+    }
+
+    // Запуск потоків
+    for (auto& vehicle : vehicles) {
+        threads.emplace_back(&Vehicle::move, vehicle.get(), SIMULATION_SIZE);
+    }
+
+    // Очікування завершення всіх потоків
+    for (auto& thread : threads) {
+        if (thread.joinable()) {
+            thread.join();
+        }
+    }
+
+    cout << "Simulation completed!" << endl;
+    return 0;
+}
